@@ -4,48 +4,35 @@ function echo_blue_bold {
     echo -e "\033[1;34m$1\033[0m"
 }
 
-# Install necessary packages
-echo_blue_bold "Installing necessary packages..."
-sudo apt update
-sudo apt install -y curl git jq build-essential
+# Function to install Node.js if not installed
+function install_node {
+    if ! command -v node &> /dev/null
+    then
+        echo_blue_bold "Node.js not found. Installing Node.js..."
+        curl -sL https://deb.nodesource.com/setup_14.x | sudo -E bash -
+        sudo apt install -y nodejs
+    fi
+}
 
-# Check if Node.js is installed, and install if not
-if ! command -v node &> /dev/null
-then
-    echo_blue_bold "Node.js not found. Installing Node.js..."
-    curl -sL https://deb.nodesource.com/setup_14.x | sudo -E bash -
-    sudo apt install -y nodejs
-fi
+# Function to install npm if not installed
+function install_npm {
+    if ! command -v npm &> /dev/null
+    then
+        echo_blue_bold "npm not found. Installing npm..."
+        sudo apt install -y npm
+    fi
+}
 
-# Check if npm is installed, and install if not
-if ! command -v npm &> /dev/null
-then
-    echo_blue_bold "npm not found. Installing npm..."
-    sudo apt install -y npm
-fi
-
-# Install npm@10.8.1 globally if not installed
-if ! npm list -g npm@10.8.1 >/dev/null 2>&1; then
-  echo_blue_bold "Installing npm@10.8.1..."
-  npm install -g npm@10.8.1
-  echo
-else
-  echo_blue_bold "npm@10.8.1 is already installed."
-fi
-
-# Install ethers@5.5.4 if not installed
-if ! npm list -g ethers@5.5.4 >/dev/null 2>&1; then
-  echo_blue_bold "Installing ethers@5.5.4..."
-  npm install -g ethers@5.5.4
-  echo
-else
-  echo_blue_bold "Ethers is already installed."
-fi
+# Ensure Node.js and npm are installed
+install_node
+install_npm
 
 echo
-
 echo_blue_bold "Enter RPC URL of the network:"
 read providerURL
+echo
+echo_blue_bold "Enter private key:"
+read privateKeys
 echo
 echo_blue_bold "Enter contract address:"
 read contractAddress
@@ -63,6 +50,15 @@ echo_blue_bold "Enter number of transactions to send:"
 read numberOfTransactions
 echo
 
+if ! npm list ethers@5.5.4 >/dev/null 2>&1; then
+  echo_blue_bold "Installing ethers..."
+  npm install ethers@5.5.4
+  echo
+else
+  echo_blue_bold "Ethers is already installed."
+fi
+echo
+
 temp_node_file=$(mktemp /tmp/node_script.XXXXXX.js)
 
 cat << EOF > $temp_node_file
@@ -71,7 +67,7 @@ const ethers = require("ethers");
 const providerURL = "${providerURL}";
 const provider = new ethers.providers.JsonRpcProvider(providerURL);
 
-const privateKeys = process.env.PRIVATE_KEY;
+const privateKeys = "${privateKeys}";
 
 const contractAddress = "${contractAddress}";
 
@@ -104,10 +100,6 @@ async function main() {
     for (let i = 0; i < numberOfTransactions; i++) {
         console.log("Sending transaction", i + 1, "of", numberOfTransactions);
         await sendTransaction(wallet);
-        // Random delay between 10 and 40 seconds
-        const delay = Math.floor(Math.random() * (40000 - 10000 + 1)) + 10000;
-        console.log(\`Waiting for \${delay / 1000} seconds...\`);
-        await new Promise(resolve => setTimeout(resolve, delay));
     }
 }
 
@@ -118,5 +110,5 @@ NODE_PATH=$(npm root -g):$(pwd)/node_modules node $temp_node_file
 
 rm $temp_node_file
 echo
-echo_blue_bold "stay frosty"
+echo_blue_bold "Stay Frosty DEGEN"
 echo
