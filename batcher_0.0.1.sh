@@ -1,125 +1,68 @@
 #!/bin/bash
 
-function echo_blue_bold {
-    echo -e "\033[1;34m$1\033[0m"
-}
+# Function to send transactions using ethers.js
+send_transactions() {
+  local private_key=$1
+  local rpc_url=$2
+  local chain_id=$3
+  local gas_limit=$4
+  local max_fee_per_gas=$5
+  local max_priority_fee_per_gas=$6
+  local to_address=$7
+  local data=$8
 
-# Function to install Node.js if not installed
-function install_node {
-    if ! command -v node &> /dev/null
-    then
-        echo_blue_bold "Node.js not found. Installing Node.js..."
-        curl -sL https://deb.nodesource.com/setup_14.x | sudo -E bash -
-        sudo apt install -y nodejs
-    fi
-}
+  cat <<EOF > sendTx.js
+const { ethers } = require('ethers');
 
-# Function to install npm if not installed
-function install_npm {
-    if ! command -v npm &> /dev/null
-    then
-        echo_blue_bold "npm not found. Installing npm..."
-        sudo apt install -y npm
-    fi
-}
+const privateKey = '${private_key}';
+const provider = new ethers.providers.JsonRpcProvider('${rpc_url}');
+const wallet = new ethers.Wallet(privateKey, provider);
 
-# Ensure Node.js and npm are installed
-install_node
-install_npm
+const tx = {
+  to: '${to_address}',
+  data: '${data}',
+  chainId: ${chain_id},
+  gasLimit: ethers.utils.hexlify(${gas_limit}),
+  maxFeePerGas: ethers.utils.parseUnits('${max_fee_per_gas}', 'gwei'),
+  maxPriorityFeePerGas: ethers.utils.parseUnits('${max_priority_fee_per_gas}', 'gwei'),
+  type: 2
+};
 
-echo
-echo_blue_bold "Enter RPC URL of the network:"
-read providerURL
-echo
-echo_blue_bold "Enter private key:"
-read privateKeys
-echo
-echo_blue_bold "Enter contract address:"
-read contractAddress
-echo
-echo_blue_bold "Enter transaction data (in hex):"
-read transactionData
-echo
-echo_blue_bold "Enter gas limit:"
-read gasLimit
-echo
-echo_blue_bold "Enter base fee (in gwei):"
-read baseFee
-echo
-echo_blue_bold "Enter max fee (in gwei):"
-read maxFee
-echo
-echo_blue_bold "Enter priority fee (in gwei):"
-read priorityFee
-echo
-echo_blue_bold "Enter number of transactions to send:"
-read numberOfTransactions
-echo
-
-if ! npm list ethers@5.5.4 >/dev/null 2>&1; then
-  echo_blue_bold "Installing ethers..."
-  npm install ethers@5.5.4
-  echo
-else
-  echo_blue_bold "Ethers is already installed."
-fi
-echo
-
-temp_node_file=$(mktemp /tmp/node_script.XXXXXX.js)
-
-cat << EOF > $temp_node_file
-const ethers = require("ethers");
-
-const providerURL = "${providerURL}";
-const provider = new ethers.providers.JsonRpcProvider(providerURL);
-
-const privateKeys = "${privateKeys}";
-
-const contractAddress = "${contractAddress}";
-
-const transactionData = "${transactionData}";
-
-const numberOfTransactions = ${numberOfTransactions};
-
-async function sendTransaction(wallet) {
-    const tx = {
-        to: contractAddress,
-        value: 0,
-        gasLimit: ethers.BigNumber.from(${gasLimit}),
-        maxFeePerGas: ethers.utils.parseUnits("${maxFee}", 'gwei'),
-        maxPriorityFeePerGas: ethers.utils.parseUnits("${priorityFee}", 'gwei'),
-        data: transactionData,
-    };
-
+async function sendTransaction() {
+  for (let i = 0; i < 5; i++) {
     try {
-        const transactionResponse = await wallet.sendTransaction(tx);
-        console.log("\033[1;35mTx Hash:\033[0m", transactionResponse.hash);
-        const receipt = await transactionResponse.wait();
-        if (receipt.status === 0) {
-            throw new Error('Transaction failed with status 0');
-        }
-        console.log("Transaction successful with receipt:", receipt);
-        console.log("");
+      const txResponse = await wallet.sendTransaction(tx);
+      console.log('Tx Hash:', txResponse.hash);
+      const receipt = await txResponse.wait();
+      console.log('Transaction was mined in block:', receipt.blockNumber);
+      break;  // Exit the loop if transaction is successful
     } catch (error) {
-        console.error("Error sending transaction:", error);
+      console.error('Error sending transaction, attempt', i + 1, 'of 5:', error);
+      if (error.code === 'SERVER_ERROR' && error.status === 503) {
+        console.log('Retrying in 5 seconds...');
+        await new Promise(resolve => setTimeout(resolve, 5000));
+      } else {
+        break;  // Exit the loop for non-server errors
+      }
     }
+  }
 }
 
-async function main() {
-    const wallet = new ethers.Wallet(privateKeys, provider);
-
-    for (let i = 0; i < numberOfTransactions; i++) {
-        console.log("Sending transaction", i + 1, "of", numberOfTransactions);
-        await sendTransaction(wallet);
-    }
-}
-
-main().catch(console.error);
+sendTransaction();
 EOF
 
-NODE_PATH=$(npm root -g):$(pwd)/node_modules node $temp_node_file
+  node sendTx.js
+}
 
-rm $temp_node_file
-echo
-echo_blue_bold "Stay Frosty DEGEN"
-echo
+# Define the variables
+PRIVATE_KEY="<your-private-key>"
+RPC_URL="https://rpc-testnet.unit0.dev"
+CHAIN_ID=88817
+GAS_LIMIT=250000
+MAX_FEE_PER_GAS=20  # in Gwei
+MAX_PRIORITY_FEE_PER_GAS=2  # in Gwei
+TO_ADDRESS="0x85dD5EfC05798958eAf19A62f7c5C083983E1C85"
+DATA="0x7ff36ab5000000000000000000000000000000000000000000000000000000000000a8210000000000000000000000000000000000000000000000000000000000000080000000000000000000000000d8f09a9b6bac0b86278aac437c647255c2815afb00000000000000000000000000000000000000000000000000000000669aff8c000000000000000000000000000000000000000000000000000000000000000200000000000000000000000097f1f1b1a35b3bdd5642b7d6d497e8dc5eb4d7cd000000000000000000000000783777f267fa1e2c95c202a0e3da7107c0fafe8b"
+
+# Send the transaction
+send_transactions "$PRIVATE_KEY" "$RPC_URL" "$CHAIN_ID" "$GAS_LIMIT" "$MAX_FEE_PER_GAS" "$MAX_PRIORITY_FEE_PER_GAS" "$TO_ADDRESS" "$DATA"
